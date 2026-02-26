@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app, origins=r"http://localhost:\d+", supports_credentials=True)
+CORS(app, origins=[r"http://localhost:\d+", "https://stock-scanner-beta.vercel.app"], supports_credentials=True)
 
 # ── JWT Config ────────────────────────────────────────────────────────────────
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET", "stockscanner_secret_change_me")
