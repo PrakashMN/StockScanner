@@ -171,6 +171,13 @@ def me():
     identity = get_jwt_identity()
     return jsonify({"userId": identity})
 
+@app.route("/api/auth/delete_prakash", methods=["GET"])
+def delete_prakash():
+    db = get_db()
+    db.execute("DELETE FROM users WHERE email=? OR username=?", ("nagaralprakash0@gmail.com", "PrakashMN"))
+    db.commit()
+    return jsonify({"message": "PrakashMN deleted successfully. You can now register again."})
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # STOCK ROUTES
