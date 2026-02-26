@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { analyzeStock } from '../services/api'
+import { useState, useEffect } from 'react'
+import { analyzeStock, getHistory, saveHistory, clearHistoryData } from '../services/api'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useNavigate } from 'react-router-dom'
 import SearchBar from '../components/SearchBar.jsx'
@@ -17,17 +17,22 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [filter, setFilter] = useState('All')
-  const [searchHistory, setSearchHistory] = useState(() => {
-    const saved = localStorage.getItem('ss_search_history')
-    if (!saved) return []
-    try {
-      const parsed = JSON.parse(saved)
-      // Filter out legacy string-based history to prevent crashes
-      return Array.isArray(parsed) ? parsed.filter(item => typeof item === 'object' && item !== null && item.symbol) : []
-    } catch (e) {
-      return []
+  const [searchHistory, setSearchHistory] = useState([])
+  
+  // Fetch history on mount
+  useEffect(() => {
+    if (!user) return
+    const fetchHistory = async () => {
+      try {
+        const historyData = await getHistory()
+        setSearchHistory(historyData)
+      } catch (err) {
+        console.error('Failed to load history', err)
+      }
     }
-  })
+    fetchHistory()
+  }, [user])
+
   const [advancedFilters, setAdvancedFilters] = useState({
     price: { min: '', max: '' },
     volume: { min: '', max: '' },
@@ -106,26 +111,27 @@ export default function Dashboard() {
       const data = await analyzeStock(sym)
       setResult(data)
       
-      // Update History with rich data
+      const historyItem = {
+        symbol: sym,
+        price: data.currentPrice,
+        rsi: data.rsi,
+        signal: data.signal,
+        name: data.name,
+        currency: data.currency || (sym.endsWith('.NS') || sym.endsWith('.BO') ? 'INR' : 'USD'),
+        marketCap: data.marketCap,
+        averageVolume: data.averageVolume,
+        trailingPE: data.trailingPE,
+        dividendYield: data.dividendYield,
+        timestamp: new Date().getTime()
+      }
+
+      // Save to backend asynchronously
+      saveHistory(historyItem).catch(err => console.error("Failed to save history", err))
+
+      // Update Local React State immediately for snappy UI
       setSearchHistory(prev => {
-        const historyItem = {
-          symbol: sym,
-          price: data.currentPrice,
-          rsi: data.rsi,
-          signal: data.signal,
-          name: data.name,
-          currency: data.currency || (sym.endsWith('.NS') || sym.endsWith('.BO') ? 'INR' : 'USD'),
-          marketCap: data.marketCap,
-          averageVolume: data.averageVolume,
-          trailingPE: data.trailingPE,
-          dividendYield: data.dividendYield,
-          timestamp: new Date().getTime()
-        }
-        
         const filtered = prev.filter(s => s.symbol !== sym)
-        const updated = [historyItem, ...filtered].slice(0, 20)
-        localStorage.setItem('ss_search_history', JSON.stringify(updated))
-        return updated
+        return [historyItem, ...filtered].slice(0, 20)
       })
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to fetch stock data. Please try again.')
@@ -134,9 +140,13 @@ export default function Dashboard() {
     }
   }
 
-  const clearHistory = () => {
-    setSearchHistory([])
-    localStorage.removeItem('ss_search_history')
+  const clearHistory = async () => {
+    try {
+      await clearHistoryData()
+      setSearchHistory([])
+    } catch (err) {
+      console.error("Failed to clear history", err)
+    }
   }
 
   const isVisible =

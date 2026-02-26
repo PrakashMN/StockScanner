@@ -29,4 +29,20 @@ export const searchStocks = async (query) => {
   return response.data
 }
 
+// History
+export const getHistory = async () => {
+  const response = await api.get('/api/history')
+  return response.data
+}
+
+export const saveHistory = async (stockData) => {
+  const response = await api.post('/api/history', stockData)
+  return response.data
+}
+
+export const clearHistoryData = async () => {
+  const response = await api.delete('/api/history')
+  return response.data
+}
+
 export default api
