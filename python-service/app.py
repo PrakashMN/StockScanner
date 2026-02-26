@@ -49,6 +49,25 @@ def init_db():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS search_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            symbol TEXT NOT NULL,
+            price REAL,
+            rsi REAL,
+            signal TEXT,
+            name TEXT,
+            currency TEXT,
+            market_cap REAL,
+            average_volume REAL,
+            trailing_pe REAL,
+            dividend_yield REAL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+            UNIQUE(user_id, symbol)
+        )
+    """)
     db.commit()
     db.close()
 
@@ -170,6 +189,95 @@ def login():
 def me():
     identity = get_jwt_identity()
     return jsonify({"userId": identity})
+
+# ════════════════════════════════════════════════════════════════════════════
+# HISTORY ROUTES
+# ════════════════════════════════════════════════════════════════════════════
+
+@app.route("/api/history", methods=["GET"])
+@jwt_required()
+def get_history():
+    user_id = get_jwt_identity()
+    db = get_db()
+    rows = db.execute(
+        "SELECT * FROM search_history WHERE user_id=? ORDER BY timestamp DESC LIMIT 20", 
+        (user_id,)
+    ).fetchall()
+    
+    history = []
+    for row in rows:
+        history.append({
+            "symbol": row["symbol"],
+            "price": row["price"],
+            "rsi": row["rsi"],
+            "signal": row["signal"],
+            "name": row["name"],
+            "currency": row["currency"],
+            "marketCap": row["market_cap"],
+            "averageVolume": row["average_volume"],
+            "trailingPE": row["trailing_pe"],
+            "dividendYield": row["dividend_yield"],
+            "timestamp": row["timestamp"]
+        })
+    return jsonify(history)
+
+@app.route("/api/history", methods=["POST"])
+@jwt_required()
+def save_history():
+    user_id = get_jwt_identity()
+    data = request.get_json()
+    symbol = data.get("symbol")
+    
+    if not symbol:
+        return jsonify({"error": "Symbol is required"}), 400
+
+    db = get_db()
+    
+    # Upsert the history item
+    db.execute("""
+        INSERT INTO search_history (
+            user_id, symbol, price, rsi, signal, name, currency, 
+            market_cap, average_volume, trailing_pe, dividend_yield, timestamp
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id, symbol) DO UPDATE SET
+            price=excluded.price,
+            rsi=excluded.rsi,
+            signal=excluded.signal,
+            name=excluded.name,
+            currency=excluded.currency,
+            market_cap=excluded.market_cap,
+            average_volume=excluded.average_volume,
+            trailing_pe=excluded.trailing_pe,
+            dividend_yield=excluded.dividend_yield,
+            timestamp=CURRENT_TIMESTAMP
+    """, (
+        user_id, symbol, data.get("price"), data.get("rsi"), data.get("signal"),
+        data.get("name"), data.get("currency"), data.get("marketCap"),
+        data.get("averageVolume"), data.get("trailingPE"), data.get("dividendYield")
+    ))
+    
+    # Enforce the 20 item limit per user (delete oldest if over 20)
+    db.execute("""
+        DELETE FROM search_history 
+        WHERE user_id = ? AND id NOT IN (
+            SELECT id FROM search_history 
+            WHERE user_id = ? 
+            ORDER BY timestamp DESC 
+            LIMIT 20
+        )
+    """, (user_id, user_id))
+    
+    db.commit()
+    return jsonify({"message": "History saved"})
+
+@app.route("/api/history", methods=["DELETE"])
+@jwt_required()
+def clear_history():
+    user_id = get_jwt_identity()
+    db = get_db()
+    db.execute("DELETE FROM search_history WHERE user_id=?", (user_id,))
+    db.commit()
+    return jsonify({"message": "History cleared"})
 
 
 # ════════════════════════════════════════════════════════════════════════════
