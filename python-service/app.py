@@ -52,6 +52,10 @@ def init_db():
     db.commit()
     db.close()
 
+# Run table initialization on startup (even with gunicorn)
+with app.app_context():
+    init_db()
+
 # ── RSI Calculation ───────────────────────────────────────────────────────────
 def calculate_rsi(prices, period=14):
     delta = prices.diff()
